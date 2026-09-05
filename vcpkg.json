@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "settings",
+  "version-string": "0.1.0",
+  "homepage": "https://github.com/turbubestia/settings",
+  "description": "A lightweight, JSON-backed C++ settings manager with built-in fuzzy search.",
+  "dependencies": [
+    "gtest",
+    "nlohmann-json"
+  ]
+}

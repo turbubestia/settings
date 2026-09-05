@@ -1,0 +1,92 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "C:/Users/claud/Development/Tools/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "description": "Debug build with symbols and no optimizations",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/cmake-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "SETTINGS_DEBUG_TEST_PATH": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "description": "Release build with optimizations enabled",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/cmake-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "debug-coverage",
+            "displayName": "Debug Coverage",
+            "description": "Debug build with code coverage instrumentation",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/cmake-debug-coverage",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "SETTINGS_DEBUG_TEST_PATH": "ON",
+                "BUILD_COVERAGE": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "configuration": "Debug"
+        },
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "configuration": "Release"
+        },
+        {
+            "name": "debug-coverage",
+            "configurePreset": "debug-coverage",
+            "configuration": "Debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "debug",
+            "displayName": "Debug Test",
+            "description": "Run tests for Debug build",
+            "configurePreset": "debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release Test",
+            "description": "Run tests for Release build",
+            "configurePreset": "release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "debug-coverage",
+            "displayName": "Debug Coverage Test",
+            "description": "Run tests for Debug Coverage build",
+            "configurePreset": "debug-coverage",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
+}
