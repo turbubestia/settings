@@ -33,15 +33,13 @@ inline const std::string MaxThreads = "/performance-task/core/max_threads";
 void register_core_schemas(settings_manager &manager)
 {
     // Test setting keys only for unit tests, not for production use.
-    manager.register_schema(setting_schema(ToolPath, typeid(std::string))
+    manager.register_schema(setting_schema(ToolPath, "/usr/bin/tool")
         .title("Tool Path")
-        .description("Path to external execution binary.")
-        .default_value(std::string("/usr/bin/tool")));
+        .description("Path to external execution binary."));
 
-    manager.register_schema(setting_schema(MaxThreads, typeid(int))
+    manager.register_schema(setting_schema(MaxThreads, static_cast<int>(4))
         .title("Max Worker Threads")
         .description("Maximum worker threads for processing tasks.")
-        .default_value(4)
         .validator([](const setting_value &val) { return val.to_int() >= 1 && val.to_int() <= 32; }));
 }
 
@@ -108,9 +106,8 @@ TEST(setting_manager_test, test_settings_manager_schema)
     EXPECT_TRUE(!manager.schema("test/key").has_value());
     
     // Register a schema.
-    auto schema = setting_schema("/test/key", typeid(int))
+    auto schema = setting_schema("/test/key", static_cast<int>(10))
         .title("Test Key")
-        .default_value(10)
         .validator([](const setting_value &val) { return val.to_int() >= 0 && val.to_int() <= 100; });
     manager.register_schema(schema);
 
@@ -127,13 +124,8 @@ TEST(setting_manager_test, test_settings_manager_schemas)
 
     EXPECT_TRUE(manager.schemas().empty());
 
-    auto schema1 = setting_schema("/key/one", typeid(std::string))
-        .title("Schema One");
-    manager.register_schema(schema1);
-
-    auto schema2 = setting_schema("/key/two", typeid(std::string))
-        .title("Schema Two");
-    manager.register_schema(schema2);
+    manager.register_schema(setting_schema("/key/one", "").title("Schema One"));
+    manager.register_schema(setting_schema("/key/two", "").title("Schema Two"));
 
     EXPECT_EQ(manager.schemas().size(), 2);
     EXPECT_TRUE(manager.schemas().contains("/key/one"));
@@ -390,8 +382,7 @@ TEST(setting_manager_test, test_schema_replacement_retains_compatible)
     settings_manager manager;
 
     // Register initial schema
-    auto schema1 = setting_schema("/test/value", typeid(int))
-        .default_value(50)
+    auto schema1 = setting_schema("/test/value", static_cast<int>(50))
         .validator([](const setting_value &val) { return val.to_int() >= 0 && val.to_int() <= 100; });
     manager.register_schema(schema1);
 
@@ -400,8 +391,7 @@ TEST(setting_manager_test, test_schema_replacement_retains_compatible)
     EXPECT_EQ(manager.get("/test/value"), 50);
 
     // Replace with compatible schema (same constraints)
-    auto schema2 = setting_schema("/test/value", typeid(int))
-        .default_value(10)
+    auto schema2 = setting_schema("/test/value", static_cast<int>(10))
         .validator([](const setting_value &val) { return val.to_int() >= 0 && val.to_int() <= 100; });
     manager.register_schema(schema2);
 
@@ -414,8 +404,7 @@ TEST(setting_manager_test, test_schema_replacement_removes_incompatible)
     settings_manager manager;
 
     // Register initial schema with wide range
-    auto schema1 = setting_schema("/test/value", typeid(int))
-        .default_value(50)
+    auto schema1 = setting_schema("/test/value", static_cast<int>(50))
         .validator([](const setting_value &val) { return val.to_int() >= 0 && val.to_int() <= 100; });
     manager.register_schema(schema1);
 
@@ -424,8 +413,7 @@ TEST(setting_manager_test, test_schema_replacement_removes_incompatible)
     EXPECT_EQ(manager.get("/test/value"), 50);
 
     // Replace with incompatible schema (tighter constraints)
-    auto schema2 = setting_schema("/test/value", typeid(int))
-        .default_value(10)
+    auto schema2 = setting_schema("/test/value", static_cast<int>(10))
         .validator([](const setting_value &val) { return val.to_int() >= 0 && val.to_int() <= 40; });
     manager.register_schema(schema2);
 
@@ -601,7 +589,7 @@ TEST(setting_manager_test, test_load_underscoreNotSupported)
 
     // Value should NOT be loaded underscore format doesn't match normalized "/general-setting"
     // The default value is "/usr/bin/tool", so if it wasn't loaded, we get the default
-    EXPECT_EQ(manager.get("/general-setting/core/tool_path"), std::string("/usr/bin/tool"));
+    EXPECT_EQ(manager.get("/general-setting/core/tool_path"), "/usr/bin/tool");
 }
 
 TEST(setting_manager_test, test_save_normalizedFormatOutput)

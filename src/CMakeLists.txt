@@ -22,8 +22,6 @@ endif()
 
 target_sources(settings PRIVATE
     assert.hpp
-    expected.hpp
-    expected.cpp
     fzy.hpp
     fzy.cpp
     settings_manager.hpp

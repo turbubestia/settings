@@ -1,9 +1,6 @@
 
 #pragma once
 
-#include <assert.hpp>
-
-#include <any>
 #include <string>
 #include <vector>
 #include <variant>
@@ -14,8 +11,6 @@
 #include <unordered_map>
 
 namespace turbubestia::settings {
-
-using setting_bound = std::variant<std::monostate, int, double>;
 
 class setting_value
 {
@@ -51,12 +46,22 @@ public:
 
     template<typename T>
     friend bool operator==(const setting_value& lhs, const T& rhs) {
-        return lhs.type() == typeid(T) && lhs.get<T>() == rhs;
+        using DecayT = std::decay_t<T>;
+        if constexpr (std::is_same_v<DecayT, const char *> || std::is_same_v<DecayT, char*>) {
+            return lhs.type() == typeid(std::string) && lhs.get<std::string>() == rhs;
+        } else {
+            return lhs.type() == typeid(T) && lhs.get<T>() == rhs;
+        }
     }
 
     template<typename T>
     friend bool operator==(const T& lhs, const setting_value& rhs) {
-        return rhs.type() == typeid(T) && rhs.get<T>() == lhs;
+        using DecayT = std::decay_t<T>;
+        if constexpr (std::is_same_v<DecayT, const char *> || std::is_same_v<DecayT, char*>) {
+            return rhs.type() == typeid(std::string) && rhs.get<std::string>() == lhs;
+        } else {
+            return rhs.type() == typeid(T) && rhs.get<T>() == lhs;
+        }
     }
 
     friend bool operator==(const setting_value& lhs, const setting_value& rhs) {
@@ -90,7 +95,32 @@ class setting_schema {
 public:
     // ctor & dtor ------------------------------------------------------------
     setting_schema() = delete;
-    setting_schema(const std::string &key, std::type_index type);
+    // setting_schema(const std::string &key, std::type_index type);
+
+    template<typename T>
+    setting_schema(const std::string &key, T default_value) 
+        : _key(key) 
+    {
+        using DecayT = std::decay_t<T>;
+        static_assert(std::is_same_v<DecayT, bool> || 
+            std::is_same_v<DecayT, int> || 
+            std::is_same_v<DecayT, double> || 
+            std::is_same_v<DecayT, std::string> ||
+            std::is_same_v<DecayT, const char*> ||
+            std::is_same_v<DecayT, char*>, 
+            "setting_schema only supports bool, int, double, std::string and const char* types.");
+       
+        if constexpr (std::is_same_v<DecayT, const char*> || std::is_same_v<DecayT, char*>) {
+            _type = typeid(std::string);
+            _default_value = setting_value(std::string(default_value));
+        } else if constexpr (std::is_same_v<DecayT, std::string>) {
+            _type = typeid(std::string);
+            _default_value = setting_value(default_value);
+        } else {
+            _type = typeid(DecayT);
+            _default_value = setting_value(default_value);
+        }
+    }
 
     // properties -------------------------------------------------------------
     auto key() const -> const std::string & { return _key; }
@@ -103,14 +133,6 @@ public:
     auto description(std::string value) -> setting_schema & { _description = std::move(value); return *this; }
 
     auto default_value() const -> const setting_value & { return _default_value; }
-    auto default_value(setting_value value) -> setting_schema & { _default_value = std::move(value); return *this; }
-
-    template<typename T>
-    auto default_value(T value) -> setting_schema & { 
-        RUNTIME_ASSERT(typeid(T) == _type);
-        _default_value = setting_value(value); 
-        return *this; 
-    }
 
     auto enum_options() const -> const std::vector<std::string> & { return _enum_options; }
     auto enum_options(std::vector<std::string> value) -> setting_schema & { _enum_options = std::move(value); return *this; }
@@ -119,6 +141,7 @@ public:
 
     // methods ----------------------------------------------------------------
     auto is_valid(const setting_value &val) const -> bool;
+    auto to_display_format() const -> std::vector<std::string>;
 
 private:
     std::string _key;
@@ -141,7 +164,7 @@ public:
     explicit settings_manager() = default;
 
     // accessors --------------------------------------------------------------
-    auto get(const std::string &key) const -> const setting_value &;
+    auto get(const std::string &key) const -> setting_value;
 
     template<typename T>
     auto set(const std::string &key, T val) -> bool {

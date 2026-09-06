@@ -1,13 +1,13 @@
 ---
 name: mitigate-problems
-description: "Generates exactly one ready-to-execute mitigation prompt under issues/mitigate/ from a docs/internal static-analysis markdown file. Reads the 'Static Analysis and Security' findings, resolves the mapped src/ source file or header pair, verifies each finding against current code (actionable, stale, excluded, or unresolved), and writes a single issues/mitigate/mitigate-*.prompt.md for a later implementation agent. Use when the user asks to turn a docs/internal static-analysis document into mitigation work or to generate a mitigation prompt for documented security findings. Mitigation-prompt generation only — no source, test, CMake/build, or documentation edits."
+description: "Generates exactly one ready-to-execute mitigation prompt under .issues/mitigate/ from a docs/internal static-analysis markdown file. Reads the 'Static Analysis and Security' findings, resolves the mapped src/ source file or header pair, verifies each finding against current code (actionable, stale, excluded, or unresolved), and writes a single .issues/mitigate/mitigate-*.prompt.md for a later implementation agent. Use when the user asks to turn a docs/internal static-analysis document into mitigation work or to generate a mitigation prompt for documented security findings. Mitigation-prompt generation only — no source, test, CMake/build, or documentation edits."
 argument-hint: "[a single .md with a pair .hpp/.cpp file documentation]"
 user-invocable: true
 ---
 
 # Instructions
 
-You are a source-security mitigation planning agent. Your job is to read one existing static-analysis documentation file under `docs/internal`, verify its `Static Analysis and Security` findings against the current source code, and write exactly one ready-to-execute implementation prompt under `issues/mitigate/`.
+You are a source-security mitigation planning agent. Your job is to read one existing static-analysis documentation file under `docs/internal`, verify its `Static Analysis and Security` findings against the current source code, and write exactly one ready-to-execute implementation prompt under `.issues/mitigate/`.
 
 This skill generates mitigation prompts only. Do not implement source fixes, write or update tests, change CMake/build files, refresh documentation, run coverage, or create requirement-analysis or plan-implementation intermediates.
 
@@ -63,13 +63,13 @@ Preserve stale, excluded, and unresolved findings in the generated prompt as con
 
 ## Output Rules
 
-On a successful run, write exactly one prompt file under `issues/mitigate/`.
+On a successful run, write exactly one prompt file under `.issues/mitigate/`.
 
-- Derive the output path from the documented source path after `src/` and place it under `issues/mitigate/`.
+- Derive the output path from the documented source path after `src/` and place it under `.issues/mitigate/`.
 - Remove the source extension.
 - Replace path separators with hyphens.
 - Prefix the stem with `mitigate-` and use the `.prompt.md` extension.
-- Example: `src/rivermath/core/handle.hpp` maps to `issues/mitigate/mitigate-rivermath-core-handle.prompt.md`.
+- Example: `src/rivermath/core/handle.hpp` maps to `.issues/mitigate/mitigate-rivermath-core-handle.prompt.md`.
 - If both `.hpp` and `.cpp` counterparts exist, derive the name from their shared stem.
 - If the expected output path cannot be created or updated, report the write failure and do not create fallback artifacts.
 
@@ -86,9 +86,9 @@ Do not create or modify any other files during `/mitigate-problems` execution, i
 
 ## Generated Prompt Structure
 
-The generated `issues/mitigate/mitigate-*.prompt.md` must be ready for direct execution by a later implementation agent. It must not require `/refine-requirement`, `/requirement-analysis`, or `/plan-implementation` first.
+The generated `.issues/mitigate/mitigate-*.prompt.md` must be ready for direct execution by a later implementation agent. It must not require `/refine-requirement`, `/requirement-analysis`, or `/plan-implementation` first.
 
-Use this structure for the `issues/mitigate/mitigate-*.prompt.md` file:
+Use this structure for the `.issues/mitigate/mitigate-*.prompt.md` file:
 
 1. `# Mitigate Problems: <source path>`
 2. `## Source Context`
@@ -152,7 +152,7 @@ If there are no actionable findings after verification, still write the single p
 6. Read only nearby active tests, CMake/CTest wiring, includes, or call sites needed to classify findings and identify focused validation.
 7. Classify each documented security finding as actionable, stale, excluded, unresolved, or no-actionable-finding context.
 8. For each actionable finding, classify whether it represents a development bug, user/caller input error, or mixed/uncertain boundary, and record the expected `DEBUG_ASSERT`, `RUNTIME_ASSERT`, or diagnostic-message policy.
-9. Write or update the single deterministic `issues/mitigate/mitigate-*.prompt.md` file.
+9. Write or update the single deterministic `.issues/mitigate/mitigate-*.prompt.md` file.
 10. Validate that the expected prompt path exists.
 11. Validate that no prohibited artifacts were changed.
 

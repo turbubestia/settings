@@ -110,57 +110,10 @@ auto to_display_format(const std::string &normalized) -> std::string
     }
     return out;
 }
-
-auto section(std::string_view str, char sep, int first, int last) noexcept -> std::string_view
-{
-    if (str.empty()) return {};
-
-    // Count sections
-    int count = 1;
-    for (char c : str)
-        if (c == sep) ++count;
-
-    // Normalize negative indices (count from the end)
-    if (first < 0) first += count;
-    if (last  < 0) last  += count;
-
-    // Clamp into valid range
-    first = std::clamp(first, 0, count - 1);
-    last  = std::clamp(last,  0, count - 1);
-
-    if (first > last) return {};
-
-    // Advance to the start of section `first`
-    auto it = str.begin();
-    for (int i = 0; i < first; ++i) {
-        it = std::find(it, str.end(), sep);
-        if (it == str.end()) return {};
-        ++it;
-    }
-
-    // Advance past the end of section `last`
-    auto end_it = it;
-    for (int i = first; i <= last; ++i) {
-        end_it = std::find(end_it, str.end(), sep);
-        if (end_it == str.end()) {
-            end_it = str.end();
-            break;
-        }
-        ++end_it;
-    }
-
-    return {it, --end_it};
-}
 }} // detail namespace
 
 // ============================================================================
 // setting_schema
-
-setting_schema::setting_schema(const std::string &key, std::type_index type)
-    : _key(key), _type(type)
-{
-    RUNTIME_ASSERT(detail::is_valid_key_syntax(key));
-}
 
 auto setting_schema::is_valid(const setting_value &val) const -> bool
 {
@@ -180,13 +133,21 @@ auto setting_schema::is_valid(const setting_value &val) const -> bool
     return true;
 }
 
+auto setting_schema::to_display_format() const -> std::vector<std::string> 
+{
+    const auto view = std::string_view(_key).substr(1);
+    std::vector<std::string> parts;
+    for (const auto part : view | std::views::split('/')) {
+        parts.push_back(detail::to_display_format(std::string(part.begin(), part.end())));
+    }
+    return parts;
+}
+
 // ============================================================================
 // settings_manager::accessors
 
-auto settings_manager::get(const std::string &key) const -> const setting_value &
+auto settings_manager::get(const std::string &key) const -> setting_value
 {
-    static setting_value no_value;
-
     // 1. Return user-configured value if present
     const auto it_v = _values.find(key);
     if (it_v != _values.end()) {
@@ -200,7 +161,7 @@ auto settings_manager::get(const std::string &key) const -> const setting_value 
     }
 
     // 3. Fallback to invalid if unknown key
-    return no_value;
+    return {};
 }
 
 auto settings_manager::set(const std::string &key, const setting_value &value) -> bool
@@ -217,10 +178,6 @@ auto settings_manager::set(const std::string &key, const setting_value &value) -
     // Validate and canonicalize against the registered schema.
     const auto &schema = _schema_registry.at(key);
     if (!schema.is_valid(value)) { return false; }
-
-    if (!value.is_type(schema.type())) {
-        return false;
-    }
 
     // Store value
     auto it = _values.find(key);
@@ -250,7 +207,7 @@ auto settings_manager::register_schema(const setting_schema &_schema) -> void
     const auto it_s = _schema_registry.find(schema.key());
     if (it_s != _schema_registry.end()) {
         const auto it_v = _values.find(schema.key());
-        if (it_v == _values.end() || !schema.is_valid(it_v->second)) {
+        if (it_v != _values.end() && !schema.is_valid(it_v->second)) {
             _values.erase(it_v);
         }
         it_s->second = schema;
@@ -284,6 +241,7 @@ bool settings_manager::save_to_file(const std::string &filePath)
     const auto folder_path = std::filesystem::path(resolved_path).parent_path();
     if (!std::filesystem::exists(folder_path) && !std::filesystem::create_directories(folder_path)) {
         std::cerr << "Could not create setting folder path " << folder_path << std::endl;
+        return false;
     }
 
     // nlohmann::json has an flatten/unflatten method, we can build a simple flatended json
@@ -294,9 +252,16 @@ bool settings_manager::save_to_file(const std::string &filePath)
     std::ofstream file(resolved_path);
     if (!file.is_open()) {
         std::cerr << "Fail to open settings.json file for writing." << std::endl;
+        return false;
     }
-    file << j.dump(4);
-    return true;
+    try {
+        file << j.dump(4);
+    } catch (const std::exception &e) {
+        std::cerr << "Fail to write settings.json file: " << e.what() << std::endl;
+        return false;
+    }
+    
+    return file.good();
 }
 
 bool settings_manager::load_from_file(const std::string &filePath)
@@ -309,23 +274,24 @@ bool settings_manager::load_from_file(const std::string &filePath)
 
     std::ifstream file(resolved_path);
     nlohmann::json j;
-    try {
-        file >> j;
-    } catch (const std::exception &e) {
-        return false;
-    }
-    
+    try { file >> j; } catch (const std::exception &e) { return false; }
     if (!j.is_object()) { return false; }
-
     nlohmann::json j_flat = j.flatten();
+
+    // load the values into a temporary map and validate against the schema registry
+    std::unordered_map<std::string, setting_value> values_temp;
     for (const auto& [key, value] : j_flat.items()) {
         const auto v = value.get<setting_value>();
         const auto it_s = _schema_registry.find(key);
-        if (it_s == _schema_registry.end()) { continue; }
+        if (it_s == _schema_registry.end()) { 
+            continue; // Ignore unknown keys
+        }
         const auto &schema = it_s->second;
-        if (schema.is_valid(v)) { _values[key] = v; }
+        if (schema.is_valid(v)) { values_temp[key] = v; }
     }
 
+    // atomic swap to avoid partial state if an exception occurs during validation
+    _values = std::move(values_temp);
     return true;
 }
 
