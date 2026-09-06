@@ -175,7 +175,7 @@ public:
 
     // methods ----------------------------------------------------------------
     auto active_values() const -> const std::unordered_map<std::string, setting_value> &;
-    void register_schema(const setting_schema &schema);
+    bool register_schema(const setting_schema &schema);
     auto schema(const std::string &key) const -> std::optional<setting_schema>;
     auto schemas() const -> const std::unordered_map<std::string, setting_schema> &;
 

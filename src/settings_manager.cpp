@@ -1,5 +1,5 @@
 
-#include <assert.hpp>
+
 #include <settings_manager.hpp>
 
 #include <nlohmann/json.hpp>
@@ -198,10 +198,10 @@ auto settings_manager::active_values() const -> const std::unordered_map<std::st
     return _values;
 }
 
-auto settings_manager::register_schema(const setting_schema &_schema) -> void
+auto settings_manager::register_schema(const setting_schema &_schema) -> bool
 {
     auto schema = _schema; // Make a copy to modify
-    RUNTIME_ASSERT(detail::is_valid_key_syntax(schema.key()));
+    if(!detail::is_valid_key_syntax(schema.key())) { return false; }
 
     // If the key already exists, revalidate its active value against the replacement.
     const auto it_s = _schema_registry.find(schema.key());
@@ -214,6 +214,7 @@ auto settings_manager::register_schema(const setting_schema &_schema) -> void
     } else {
         _schema_registry.emplace(schema.key(), schema);
     }
+    return true;
 }
 
 auto settings_manager::schema(const std::string &key) const -> std::optional<setting_schema> 

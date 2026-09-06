@@ -21,7 +21,6 @@ if(BUILD_COVERAGE)
 endif()
 
 target_sources(settings PRIVATE
-    assert.hpp
     fzy.hpp
     fzy.cpp
     settings_manager.hpp
