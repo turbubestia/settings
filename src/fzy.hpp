@@ -4,11 +4,9 @@
 #include <vector>
 #include <utility>
 
-#include <fzy/match.h>
-
 namespace turbubestia::settings::fzy {
 
-using score_t = ::score_t;
+constexpr double lowest_score_t = std::numeric_limits<double>::lowest();
 
 /**
  * @brief Check if a needle matches a haystack using fzy fuzzy matching.
@@ -32,7 +30,7 @@ auto has_match(const std::string &needle, const std::string &haystack) -> int;
  * @param haystack The string to search in.
  * @return The match score, or SCORE_MIN if no match.
  */
-auto match(const std::string &needle, const std::string &haystack) -> score_t;
+auto match(const std::string &needle, const std::string &haystack) -> double;
 
 /**
  * @brief Compute the fzy match score and character positions for a single target.
@@ -46,7 +44,7 @@ auto match(const std::string &needle, const std::string &haystack) -> score_t;
  *         are empty if no match.
  */
 auto match_positions(const std::string &needle, const std::string &haystack)
-    -> std::pair<score_t, std::vector<size_t>>;
+    -> std::pair<double, std::vector<size_t>>;
 
 /**
  * @brief Batch match a needle against multiple targets.
