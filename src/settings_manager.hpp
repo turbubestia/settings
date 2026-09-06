@@ -1,12 +1,15 @@
 
 #pragma once
 
+#include <assert.hpp>
+
 #include <any>
 #include <string>
 #include <vector>
 #include <variant>
 #include <optional>
 #include <typeindex>
+#include <functional>
 #include <filesystem>
 #include <unordered_map>
 
@@ -70,6 +73,9 @@ public:
         }, _value.value());
     }
 
+    // validations ------------------------------------------------------------
+    bool is_type(std::type_index target_type) const { return type() == target_type; }
+
     // accessors --------------------------------------------------------------
     auto to_bool() const -> bool { return get<bool>(); }
     auto to_int() const -> int { return get<int>(); }
@@ -80,21 +86,52 @@ private:
     std::optional<std::variant<bool, int, double, std::string>> _value {};
 };
 
-struct setting_schema {
-    std::string key;          // e.g., "editor/tab_size"
-    std::string title;        // e.g., "Tab Size"
-    std::string description;  // e.g., "Number of spaces per tab"
-    std::string category;     // e.g., "Editor"
-    setting_value default_value;
-    std::type_index type = typeid(std::string);     // QMetaType::Int, QMetaType::Bool, etc.
+class setting_schema {
+public:
+    // ctor & dtor ------------------------------------------------------------
+    setting_schema() = delete;
+    setting_schema(const std::string &key, std::type_index type);
 
-    // Optional constraints
-    setting_bound min = std::monostate{}; // For numeric types
-    setting_bound max = std::monostate{}; // For numeric types
-    std::vector<std::string> enum_options;
+    // properties -------------------------------------------------------------
+    auto key() const -> const std::string & { return _key; }
+    auto type() const -> std::type_index { return _type; }
 
-    // Validate a candidate value against this schema
+    auto title() const -> const std::string & { return _title; }
+    auto title(std::string value) -> setting_schema & { _title = std::move(value); return *this; }
+
+    auto description() const -> const std::string & { return _description; }
+    auto description(std::string value) -> setting_schema & { _description = std::move(value); return *this; }
+
+    auto default_value() const -> const setting_value & { return _default_value; }
+    auto default_value(setting_value value) -> setting_schema & { _default_value = std::move(value); return *this; }
+
+    template<typename T>
+    auto default_value(T value) -> setting_schema & { 
+        RUNTIME_ASSERT(typeid(T) == _type);
+        _default_value = setting_value(value); 
+        return *this; 
+    }
+
+    auto enum_options() const -> const std::vector<std::string> & { return _enum_options; }
+    auto enum_options(std::vector<std::string> value) -> setting_schema & { _enum_options = std::move(value); return *this; }
+
+    auto validator(std::function<bool(const setting_value &)> value) -> setting_schema & { _validator = std::move(value); return *this; }
+
+    // methods ----------------------------------------------------------------
     auto is_valid(const setting_value &val) const -> bool;
+
+private:
+    std::string _key;
+    std::string _title;
+    std::string _description;
+    setting_value _default_value;
+    std::type_index _type = typeid(std::string);
+
+    // enumeration constraints
+    std::vector<std::string> _enum_options;
+
+    // validator
+    std::function<bool(const setting_value &)> _validator;
 };
 
 class settings_manager {
@@ -133,8 +170,8 @@ public:
     static auto test_base_directory() -> std::string;
 
 private:
-    std::unordered_map<std::string, setting_value> m_values;          // Flat value store ($O(1)$)
-    std::unordered_map<std::string, setting_schema> m_schemaRegistry; // Schema metadata ($O(1)$)
+    std::unordered_map<std::string, setting_value> _values;          // Flat value store ($O(1)$)
+    std::unordered_map<std::string, setting_schema> _schema_registry; // Schema metadata ($O(1)$)
 };
 
 } // namespace turbubestia::settings

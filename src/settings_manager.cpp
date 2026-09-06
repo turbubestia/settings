@@ -81,10 +81,6 @@ auto resolve_persistence_path(const std::string &filePath) -> std::string
     return is_within_path(resolved_path, config_path.string()) ? resolved_path : std::string();
 }
 
-bool can_convert(const setting_value& v, std::type_index target_type) {
-    return v.type() == target_type;
-}
-
 auto to_display_format(const std::string &normalized) -> std::string
 {
     std::string out;
@@ -112,38 +108,6 @@ auto to_display_format(const std::string &normalized) -> std::string
                 break;
         }
     }
-    return out;
-}
-
-auto to_normalized_format(const std::string &display) -> std::string
-{
-    std::string out;
-    out.reserve(display.size());
-
-    auto it_end = display.end();
-    auto state = 1;
-
-    for (auto it = display.begin(); it != it_end; ++it) {
-        const auto c = static_cast<unsigned char>(*it);
-        switch(state) {
-            // copy until space
-            case 0: 
-                if (std::isspace(c)) {
-                    out += '-';
-                    state = 1;
-                } else {
-                    out += static_cast<unsigned char>(std::tolower(c));
-                }
-                break;
-            case 1:
-                if (!std::isspace(c)) {
-                    out += static_cast<unsigned char>(std::tolower(c));
-                    state = 0;
-                }
-                break;
-        }
-    }
-
     return out;
 }
 
@@ -187,50 +151,30 @@ auto section(std::string_view str, char sep, int first, int last) noexcept -> st
 
     return {it, --end_it};
 }
-
-auto convert_to_schema_type(const setting_schema &schema, const setting_value &value) -> std::optional<setting_value>
-{
-    if (detail::can_convert(value, schema.type)) { return value; }
-    return std::nullopt;
-}
 }} // detail namespace
 
 // ============================================================================
 // setting_schema
 
+setting_schema::setting_schema(const std::string &key, std::type_index type)
+    : _key(key), _type(type)
+{
+    RUNTIME_ASSERT(detail::is_valid_key_syntax(key));
+}
+
 auto setting_schema::is_valid(const setting_value &val) const -> bool
 {
     // First check if conversion is even possible
-    if (val.type() != type) { return false; }
+    if (!val.is_type(_type)) { return false; }
 
-    // For numeric types: validate bounds against the value
-    if (type == typeid(int)) {
-        int num = val.to_int();
-        if (std::holds_alternative<int>(min)) {
-            const auto min_val = std::get<int>(min);
-            if (num < min_val) return false;
-        }
-        if (std::holds_alternative<int>(max)) {
-            const auto max_val = std::get<int>(max);
-            if (num > max_val) return false;
-        }
-    } else if (type == typeid(double)) {
-        double num = val.to_double();
-        if (std::holds_alternative<double>(min)) {
-            const auto min_val = std::get<double>(min);
-            if (num < min_val) return false;
-        }
-        if (std::holds_alternative<double>(max)) {
-            const auto max_val = std::get<double>(max);
-            if (num > max_val) return false;
-        }
-    }
+    // now validate against the schema constraints
+    if (_validator) { if (!_validator(val)) { return false; } }
 
     // For enum types: validate exact string membership in enum_options
-    if (!enum_options.empty() && detail::can_convert(val, typeid(std::string))) {
+    if (!_enum_options.empty() && val.is_type(typeid(std::string))) {
         const auto str = val.to_string();
-        const auto it = std::ranges::find(enum_options, str);
-        if (it == enum_options.end()) { return false; }
+        const auto it = std::ranges::find(_enum_options, str);
+        if (it == _enum_options.end()) { return false; }
     }
 
     return true;
@@ -244,15 +188,15 @@ auto settings_manager::get(const std::string &key) const -> const setting_value 
     static setting_value no_value;
 
     // 1. Return user-configured value if present
-    const auto it_v = m_values.find(key);
-    if (it_v != m_values.end()) {
+    const auto it_v = _values.find(key);
+    if (it_v != _values.end()) {
         return it_v->second;
     }
 
     // 2. Fallback to default value from schema
-    const auto it_s = m_schemaRegistry.find(key);
-    if (it_s != m_schemaRegistry.end()) {
-        return it_s->second.default_value;
+    const auto it_s = _schema_registry.find(key);
+    if (it_s != _schema_registry.end()) {
+        return it_s->second.default_value();
     }
 
     // 3. Fallback to invalid if unknown key
@@ -267,22 +211,21 @@ auto settings_manager::set(const std::string &key, const setting_value &value) -
     }
 
     // Reject unknown keys (must be registered in schema registry)
-    const auto it_s = m_schemaRegistry.find(key);
-    if (it_s == m_schemaRegistry.end()) { return false; }
+    const auto it_s = _schema_registry.find(key);
+    if (it_s == _schema_registry.end()) { return false; }
 
     // Validate and canonicalize against the registered schema.
-    const auto &schema = m_schemaRegistry[key];
+    const auto &schema = _schema_registry.at(key);
     if (!schema.is_valid(value)) { return false; }
 
-    const auto converted = detail::convert_to_schema_type(schema, value);
-    if (!converted.has_value()) {
+    if (!value.is_type(schema.type())) {
         return false;
     }
 
     // Store value
-    auto it = m_values.find(key);
-    if (it == m_values.end()) {
-        m_values.emplace(key, value);
+    auto it = _values.find(key);
+    if (it == _values.end()) {
+        _values.emplace(key, value);
     } else {
         it->second = value;
     }
@@ -295,56 +238,37 @@ auto settings_manager::set(const std::string &key, const setting_value &value) -
 
 auto settings_manager::active_values() const -> const std::unordered_map<std::string, setting_value> &
 {
-    return m_values;
+    return _values;
 }
 
 auto settings_manager::register_schema(const setting_schema &_schema) -> void
 {
     auto schema = _schema; // Make a copy to modify
-    RUNTIME_ASSERT(detail::is_valid_key_syntax(schema.key));
-
-    // Extract key prefix (first segment before '/')
-    const auto key_prefix = std::string(detail::section(schema.key,'/', 1, 1));
-
-    if (schema.category.empty()) {
-        // Auto-fill empty category using display-format conversion from key prefix
-        schema.category = detail::to_display_format(key_prefix);
-    } else {
-        // Consistency enforcement: normalize both category and key prefix for comparison
-        const auto normalized_category = detail::to_normalized_format(schema.category);
-        const auto display_prefix = detail::to_display_format(key_prefix);
-        const auto normalized_prefix = detail::to_normalized_format(display_prefix);
-        if (normalized_category != normalized_prefix) {
-            // Mismatched category — reject without side effects
-            // qWarning() << "Category mismatch for key" << schema.key
-            //            << "expected prefix" << key_prefix << "with category" << schema.category;
-            return;
-        }
-    }
+    RUNTIME_ASSERT(detail::is_valid_key_syntax(schema.key()));
 
     // If the key already exists, revalidate its active value against the replacement.
-    const auto it_s = m_schemaRegistry.find(schema.key);
-    if (it_s != m_schemaRegistry.end()) {
-        const auto it_v = m_values.find(schema.key);
-        if (it_v == m_values.end() || !schema.is_valid(it_v->second)) {
-            m_values.erase(it_v);
+    const auto it_s = _schema_registry.find(schema.key());
+    if (it_s != _schema_registry.end()) {
+        const auto it_v = _values.find(schema.key());
+        if (it_v == _values.end() || !schema.is_valid(it_v->second)) {
+            _values.erase(it_v);
         }
         it_s->second = schema;
     } else {
-        m_schemaRegistry.emplace(schema.key, schema);
+        _schema_registry.emplace(schema.key(), schema);
     }
 }
 
 auto settings_manager::schema(const std::string &key) const -> std::optional<setting_schema> 
 {
-    const auto it = m_schemaRegistry.find(key);
-    if (it == m_schemaRegistry.end()) { return std::nullopt; }
+    const auto it = _schema_registry.find(key);
+    if (it == _schema_registry.end()) { return std::nullopt; }
     return it->second;
 }
 
 auto settings_manager::schemas() const -> const std::unordered_map<std::string, setting_schema> &
 {
-    return m_schemaRegistry;
+    return _schema_registry;
 }
 
 // ============================================================================
@@ -364,7 +288,7 @@ bool settings_manager::save_to_file(const std::string &filePath)
 
     // nlohmann::json has an flatten/unflatten method, we can build a simple flatended json
     // and use the builtin unflatten
-    nlohmann::json j_flat = m_values;
+    nlohmann::json j_flat = _values;
     nlohmann::json j = j_flat.unflatten();
 
     std::ofstream file(resolved_path);
@@ -384,17 +308,22 @@ bool settings_manager::load_from_file(const std::string &filePath)
     }
 
     std::ifstream file(resolved_path);
-    // RUNTIME_ASSERT(file.is_open(), "Fail to open settings.json file for writing.");
     nlohmann::json j;
     try {
         file >> j;
     } catch (const std::exception &e) {
         return false;
     }
+    
+    if (!j.is_object()) { return false; }
 
     nlohmann::json j_flat = j.flatten();
     for (const auto& [key, value] : j_flat.items()) {
-        m_values[key] = value.get<setting_value>();
+        const auto v = value.get<setting_value>();
+        const auto it_s = _schema_registry.find(key);
+        if (it_s == _schema_registry.end()) { continue; }
+        const auto &schema = it_s->second;
+        if (schema.is_valid(v)) { _values[key] = v; }
     }
 
     return true;
